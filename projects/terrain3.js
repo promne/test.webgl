@@ -23,6 +23,7 @@ function MapDataRepository(chunkSize = 10) {
 }
 
 MapDataRepository.prototype.normalize = function () {
+    console.time("normalize")
     let normStats = this.maps.map((mapData) => {
         let map = mapData.map
         var normStats = { min: Number.MAX_VALUE, max: Number.MIN_VALUE }
@@ -39,6 +40,7 @@ MapDataRepository.prototype.normalize = function () {
     this.maps.forEach((mapData) => {
         mapData.mapNormalized = normalizeHeightMap(mapData.map, normStats.min, normStats.max)
     })
+    console.timeEnd("normalize")
 }
 
 function normalizeHeightMap(map, min, max) {
@@ -49,6 +51,8 @@ function normalizeHeightMap(map, min, max) {
 }
 
 MapDataRepository.prototype.generate = function (chunkVector) {
+    console.time("generate")
+
     octaveOffsets = Array.from(Array(this.fractalNoiseSize + 1), (v,k) => {
         return {
             x: (Math.sin(this.fractalNoiseSize*k))*5000 + (chunkVector.x * (this.chunkSize)),
@@ -72,6 +76,7 @@ MapDataRepository.prototype.generate = function (chunkVector) {
         }
         return height
     })
+    console.timeEnd("generate")
 
     return heightsMap
 }
@@ -130,7 +135,7 @@ var scene = new THREE.Scene();
 
 // scene.add(new THREE.AxesHelper(100));
 
-var camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 3000);
+var camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 6000);
 camera.position.set(30, -870, 620);
 
 var renderer = new THREE.WebGLRenderer();
@@ -138,53 +143,8 @@ renderer.setSize(width, height);
 document.body.appendChild(renderer.domElement);
 
 
-let pos = new THREE.Vector2(0, 0)
-let chunkTilesSize = 64
-let maxLod = 4
-let mapDataRepository = new MapDataRepository(chunkTilesSize)
-
-let mapChunkSize = chunkTilesSize * 2
-let heightScaleFactor = chunkTilesSize * mapDataRepository.tileSize * 100
-
-let mapChunkLimit = maxLod
-console.time("generate")
-for (var x = -mapChunkLimit; x < mapChunkLimit; x++) {
-    for (var y = -mapChunkLimit; y < mapChunkLimit; y++) {
-        mapDataRepository.chunks(new THREE.Vector2(x,y))
-    }
-}
-console.timeEnd("generate")
-
-console.time("normalize")
-mapDataRepository.normalize()
-console.timeEnd("normalize")
-
-
-var materialWire = new THREE.MeshLambertMaterial({
-    wireframe: true,
-    vertexColors: THREE.VertexColors,
-});
-var material = new THREE.MeshLambertMaterial({
-    vertexColors: THREE.VertexColors,
-});
-
-
-
-console.time("geometry")
-let zeroPos = new THREE.Vector2(0,0)
-mapDataRepository.maps.forEach( mapData => {
-    let lod = Math.min(maxLod, Math.max(0, Math.round(mapData.pos.manhattanLength(zeroPos)*0.5)))
-    let tx = mapChunkSize * mapData.pos.x
-    let ty = -mapChunkSize * mapData.pos.y
-
-    let g = computeGeometry(mapData.mapNormalized, mapChunkSize, heightScaleFactor, lod)
-    g.translate(tx, ty, 0)
-
-    scene.add(new THREE.Mesh(g, tx>=0&&ty<=0 ? materialWire : material));
-})
-console.timeEnd("geometry")
-
 scene.add(new THREE.AmbientLight(0xffffff));
+
 
 var controls = new THREE.OrbitControls(camera, renderer.domElement);
 
@@ -194,4 +154,84 @@ function render() {
     renderer.render(scene, camera);
 }
 
+console.log("about to render")
 render();
+console.log("rendering")
+
+let zeroPos = new THREE.Vector2(0,0)
+let chunkTilesSize = 64
+let maxLod = 4
+let mapDataRepository = new MapDataRepository(chunkTilesSize)
+
+let mapChunkSize = chunkTilesSize * 2
+let heightScaleFactor = chunkTilesSize * mapDataRepository.tileSize * 100
+
+
+var materialWire = new THREE.MeshLambertMaterial({
+    wireframe: true,
+    vertexColors: THREE.VertexColors,
+});    
+var material = new THREE.MeshLambertMaterial({
+    vertexColors: THREE.VertexColors,
+});    
+
+let meshRepository = new WeakMap()
+
+function updateGeometries() {
+    console.time("geometries")
+    mapDataRepository.maps.forEach( mapData => {
+        let lod = Math.min(maxLod, Math.max(0, Math.round(mapData.pos.manhattanDistanceTo(zeroPos)*0.5)))
+        let tx = mapChunkSize * mapData.pos.x
+        let ty = -mapChunkSize * mapData.pos.y
+        
+        let oldMesh = meshRepository.get(mapData.pos)
+        if (oldMesh != null) {            
+            scene.remove(oldMesh)
+            oldMesh.geometry.dispose()
+        }
+        
+        let g = computeGeometry(mapData.mapNormalized, mapChunkSize, heightScaleFactor, lod)
+        g.translate(tx, ty, 0)
+        let mesh = new THREE.Mesh(g, tx>=0&&ty<=0 ? materialWire : material) 
+        // let mesh = new THREE.Mesh(g, materialWire) 
+        scene.add(mesh);
+        
+        meshRepository.set(mapData.pos, mesh)
+        
+    })
+    console.timeEnd("geometries")
+}
+
+let mapChunkLimit = maxLod 
+for (var x = -mapChunkLimit; x < mapChunkLimit; x++) {
+    for (var y = -mapChunkLimit; y < mapChunkLimit; y++) {
+        let mapData = mapDataRepository.chunks(new THREE.Vector2(x,y))
+    }    
+    mapDataRepository.normalize()
+    updateGeometries()
+}    
+
+var raycaster = new THREE.Raycaster();
+var plane = new THREE.Plane( new THREE.Vector3( 0, 0, 1 ), 0 );
+var mouse = new THREE.Vector2()
+function onMouseMove( event ) {
+
+    // calculate mouse position in normalized device coordinates
+    // (-1 to +1) for both components
+
+    mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    mouse.y = ( event.clientY / window.innerHeight ) * 2 - 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    var intersects = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, intersects);
+    
+    zeroPos.copy(intersects)
+    zeroPos.divideScalar(mapChunkSize)
+    zeroPos
+    console.log(intersects)
+    console.log(zeroPos)
+    updateGeometries()
+    //render()
+}
+// window.addEventListener( 'mousedown', onMouseMove, false );
