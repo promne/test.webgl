@@ -21,6 +21,12 @@
   <body>
       <h3>List of projects</h3>
     <ul>
+            {% for file in site.static_files %}
+            <li>
+                    <a href="{{ file.path }}">{{ file.basename }}</a>
+                </li>
+                {%- endfor -%}    
+
     {% assign project_files = site.static_files | where: "html", true %}
     {% for file in project_files %}
         {%- if file.extname == "html" -%}
