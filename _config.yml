@@ -6,6 +6,7 @@ github:
 
 collections:
   projects:
+    output: true
         
 defaults:
   - scope:
