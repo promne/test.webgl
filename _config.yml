@@ -4,6 +4,9 @@ github:
   source:
     branch: master
 
+collections:
+  projects:
+        
 defaults:
   - scope:
       path: ""
