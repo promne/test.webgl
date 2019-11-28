@@ -19,20 +19,17 @@
   </head>
 
   <body>
-
-    {%- assign sections = "projects" | split: ", " -%}
-
-    {%- for section in sections -%}
-        <h3 id="{{ section }}">{{ section | capitalize }}</h3>
-
-        <ul>
-        {%- for item in site[section] -%}
+      <h3>List of projects</h3>
+    <ul>
+    {% assign project_files = site.static_files | where: "html", true %}
+    {% for file in project_files %}
+        {%- if file.extname == "html" -%}
             <li>
-                <a href="{{ item.url | relative_url }}">{{ item.title }}</a>
+                <a href="{{ file.path }}">{{ file.basename }}</a>
             </li>
-        {%- endfor -%}
-        </ul>
+        {%- endif -%}
     {%- endfor -%}    
+    </ul>
 
   </body>
 </html>

@@ -4,11 +4,12 @@ github:
   source:
     branch: master
 
-collections:
-  projects:
-
 defaults:
   - scope:
       path: ""
     values:
       layout: default
+  - scope:
+      path: "projects"
+    values:
+      html: true
