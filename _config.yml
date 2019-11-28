@@ -12,7 +12,3 @@ defaults:
       path: ""
     values:
       layout: default
-  - scope:
-      path: "projects"
-    values:
-      html: true
